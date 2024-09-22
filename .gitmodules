@@ -1,0 +1,6 @@
+[submodule "Application Security/Lab 2"]
+	path = Application Security/Lab 2
+	url = https://github.com/AlexanderLotero/AppSecLab2
+[submodule "Application Security/Lab 3"]
+	path = Application Security/Lab 3
+	url = https://github.com/AlexanderLotero/AppSecLab3
