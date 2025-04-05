@@ -1,0 +1,83 @@
+=====
+Bugs
+=====
+
+
+------------------------------
+Cross-site Scripting - Task 1
+------------------------------
+	The first of the vulnerabilities discovered, exploited, and patched during our testing was a vulnerability that enabled a cross-site scripting attack (XSS). In short, the OWASP Foundation defines XSS as "a type of injection, in which malicious scripts are injected into otherwise benign and trusted websites." In our case, as a simple proof-of-concept attack, we injected a JavaScript "alert" to create a pop-up on the running window that alerts the user of something. Specifically, our alert displays the message "XSS Vulnerability Located" to make it immediately obvious that our attack was successful. The vulnerability itself was located on lines 71-74 of views.py in the buy_card_view() function in which the "director" variable found in the original HTTP GET request is added to the "context" list and sent to the render function within django. Further, on lines 59-62 of item-single.html, the director variable is tagged as safe within the template page. The director variable appears to be intended to enable the html to display a string that states the purchased card was endorsed by a specific individual or organization, but because this user input is unsanitized, it instead serves as an easy attack surface for XSS injection. To actually exploit this vulnerability, we used Burp Suite in the following steps:
+	1. Configure and turn-on our proxy to intercept traffic between our browser and the gift card site
+	2. Capture a legitimate GET request to the buy_card_view page of the site and send that request to the Repeater tool within Burp
+	3. Add the following variable to the "Request Query Parameters" section: director=/><script>alert("XSS Vulnerability Located")</script> and send the 	request 
+	4. Observe the alert pop-up at the following webpage: http://127.0.0.1:8000/buy/1?director=%2f%3e%3cscript%3ealert(%22XSS%20Vulnerability%20Located%22)%3c%2fscript%3e
+Thus, our XSS exploit is complete and has successfully caused the alert within our webpage.
+	
+	Next, we need to patch this vulnerability. Ultimately, the root cause of this vulnerability is the unsanitized nature of the user input that is used to declare the director variable. So, put simply, we took steps to ensure that only valid HTML is being used during the rendering of item-single.html to disable a malicious users' ability to instead inject JavaScript (JS). Thus, our patch aims to replace characters necessary to write JS scripts, with HTML-safe sequences. Firstly, we must import the Python HTML library into views.py - "import html" Then, by simply adding the instruction "director = html.escape(director)" between lines 73 and 74 of the original views.py, our previous script: "/><script>alert("XSS Vulnerability Located")</script>" becomes "/&gt;&lt;script&gt;alert(&quot;XSS Vulnerability Located&quot;)&lt;/script&gt;". This is no longer a valid JS script, no longer creates an alert on the webpage, and can no longer exploit the described vulnerability.
+
+
+------------------------------------
+Cross Site Request Forgery - Task 2
+------------------------------------
+	The second vulnerability is one of cross site request forgery (CSRF), defined by the OWASP Foundation as "an attack that forces an end user to execute unwanted actions on a web application in which they’re currently authenticated." Our goal here was specifically to cause a legitimate user to unkowingly gift us, the malicious user, a gift card without any indication that they did so using the site's gift functionality. The root cause of the vulnerability itself is that the site relies solely on session cookies to "authenticate" each subsiquent request from the user after initial login. There are currenlty no additional measures to ensure the legitimacy of user requests. To exploit, we first intercepted a legitimate POST packet to the gift webpage and sent it to Burp's repeater tool to understand exactly how these requests are to be formatted. From there we copied the contents of this packet, removed the existing "sessionid" cookie, and created an HTML webpage that sends the POST request to gift a card to our malicious user "bob" on the click of a big "Claim your free reward!" button. Provided that the victim currently has an authenticated session with the gift card site, clicking this buttion will send the POST request that provides our malicious user "bob" with a $115 gift card, payed for by the victim, without any indication to the victim. Our malicious webpage remains unchanged after the button is clicked to avoid any indication of the malicious activity going on in the background. The HTML of our malicious webpage for reference:
+	<html>
+		<body>
+			<iframe id="invisible" name="invisible" style="display:none;"></iframe>
+			<form method="POST" target="invisible" action="http://127.0.0.1:8000/gift/0">
+				<input type="hidden" name="amount" value="115"/>
+				<input type="hidden" name="username" value="bob"/>
+				<input type="submit" value="Claim your free reward!"  style="text-allign: center; background-color: blue; color: yellow; font-size: 3em; 	height: 100px; width: 600px; left: 250; top: 250;" >
+			</form>
+		</body>
+	<html>
+The success of the attack is proven by the newly added gift card in bob's name within the database. The details of our demonstration include the user "bob" as the attacker, the user "alice" as the victim, and the amount of the gift card is $115. This attack serves as merely a proof-of-concept (proof of vulnerability) because we make two important assumptions that enable a successful attack:
+	1. The victim already has an ongoing, authenticated session with the gift card site at the time of clicking the buttion on our malicious site, and
+	2. We as the attacker were able to convince the victim to visit our malicious webpage and click the "Claim your free reward!" button
+	
+	To patch this vulnerability, we must include additional measures to confirm that more than just a simple session cookie is used to authenticate requests. Our method of choice is Django's built-in CSRF protection, specifically, it uses a CSRF cookie, a random secret value that is inaccessible to other websites - it cannot be stolen to be used by our malicious request. To implement this, because the views.py file already includes the necessary import - "from django.views.decorators.csrf import csrf_protect as csrf_protect," we need only to activiate this protection on the gift_card_view() function. We do so by including the following line right above the gift_card_view() function on line 118 of the original views.py file: "@csrf_protect" This renders our described attack useless as we cannot steal or guess the CSRF token that is shared between the gift card site and the victim user. Attempting the attack with the CSRF protection on does not grant the malicious user "bob" with a gift card.
+
+
+-----------------------
+SQL Injection - Task 3
+-----------------------
+	The third of our discovered vulnerabilities is one of SQL Injection (SQLi), defined by the OWASP Foundation as the "insertion or 'injection' of a SQL query via the input data from the client to the application." Our goal here was, given that we know that a user "admin" exists in the database, can we force the admin's password to be output to a rendered webpage. This specific case is one of a union attack, using the union functionality of SQL - to combine the result-set of two or more SELECT statements into a single output. Here, the vulnerability is found in line 197 of the use_card_view() function within the original views.py file in which the "card_query" variable is declared as follows: "card_query = Card.objects.raw('select id from LegacySite_card where data = \'%s\'' % signature)." Once again, user input is unsanitized and used directly as part of a database query through the "signature" variable included within a valid gift card. To deliver our payload we created a malicious gift card in-line with the site's expected gift card format with an edited value as the signature. Through some trial and error testing to find a valid input (value of "signature") that caused the admin's password to be displayed, we discovered the following: "signature": "a' union select password from LegacySite_user where username = 'admin" This results in the following as the full query submitted to the database: "select id from LegacySite_card where data = 'a' union select password from LegacySite_user where username = 'admin'" The result set of this query includes only the password ("select password") of the "admin" user (where username = 'admin'), which is printed to the use-card.html page after our gift card has been submitted. The "admin" user's salted password: 
+	Found card with data: Card object (000000000000000000000000000078d2$18821d89de11ab18488fdc0a01f1ddf4d290e198b0f80cd4974fc031dc2615a3)
+To reiterate, this attack is made possible by allowing unsanitized user input to be used directly as a query to the database.'
+	
+	In order to patch this vulnerability, we propose a short method to "sanitize" the input found in the signature field of submitted gift cards. Specifically, we no longer allow the single quotes character: "'" because this character is what allows malicious users to take advantage of the union select functionality. Consider the card_query declaration mentioned previously: "card_query = Card.objects.raw('select id from LegacySite_card where data = \'%s\'' % signature)" The single quotes characters are already provided by the string's formatting, denoted by the "/'" Thus, users are able to "break out" of a single query and introduce a union select statement by including two single quotation marks to close and open the ones already present in the string. In order to patch this, we remove the ability to include single quotes as part of the singature field within a gift card by including the following two lines in the use_card_view() function right before card_query is declared on line 197: 
+	if "'" in signature:
+            signature = signature.replace("'", "")
+This eliminates any occurences of single quotes within the signature field and thus renders our described attack unsuccessful, as well as all other attempts at union select statements. The "admin" user's password is no longer output onto the webpage after the submission of our malicious "SQLInjection.gftcrd."
+
+
+---------------------------
+Command Injection - Task 4
+---------------------------
+	The fourth and final vulnerability to be reported is one that enables command injection, defined by the OWASP FOundation as "an attack in which the goal is execution of arbitrary commands on the host operating system via a vulnerable application." The vulnerability once again stems from a lack of user input sanitization. In this case, the vulnerable code is found within the use_card_view() function in the views.py file and in the parse_card_data() function in the extras.py file. Firstly, the card_file_path variable is declared using input directly from the user, on line 190 in views.py. "card_file_path" is then later passed to the parse_card_data() function within extras.py as "card_path_name." This input is then eventually used as part of a system call: ret_val = system(f"./{CARD_PARSER} 2 {card_path_name} > tmp_file"). To summarize, user input is directly used as part of a system call. To exploit we first needed a gift card file to submit that passes the proper checks within the code to ensure that we reach the line of code that performs the system call:
+	1. Our request must be of the POST method, and the "card_supplied" paramter must be set to False. Line 181 of views.py: "elif request.method == "POST" 	and 	request.POST.get('card_supplied', False)" We sent our request through Burp's repeater tool to ensure these conditions were satisfied.
+	2. The JSON formatting within our submitted gift card must be incorrect in order to cause a JSON decode error such that we do not return from the 	parse_card_data() function before reaching our desired line of code, see code snippet below:
+		try:
+        		test_json = json.loads(card_file_data)
+        		if type(card_file_data) != str:
+            		card_file_data = card_file_data.decode()
+        		return card_file_data
+    		except (json.JSONDecodeError, UnicodeDecodeError):
+        		pass
+	If our gift card contains correct formatting, the function will return before reaching our vulnerable line of code. The contents of our gift card 	file:
+		[
+			{
+				"name": "Malicious Attacker",
+				"id" "3v1L"
+			}
+		]
+	This gift card produces the following error: "json.decoder.JSONDecodeError: Expecting ":" delimiter: line 4 column 8 (char 44)"
+
+	With our gift card ready to go, next is the command injection itself, our input provided to the "NameYourCard" prompt on the use card webpage. We provided the following for the name: "; touch CommandInjection;" The semicolons isolate our command, touch CommandInjection, from the text proceeding it and the text following it, so when the system call "./giftcardreader 2 /tmp/; touch CommandInjection;_11_parser.gftcrd > tmp_file" is run, the touch command is performed as an individual command, unaffected by the rest of the string. Our attack is verified as successful by locating the newly added "CommandInjection" file within the site's file system. We chose a simple touch command as a proof-of-concept, but more complex and harmful commands are also possible. Additionally, we named our gift card "; CommandInjection;.gft" for good measure, but the name of the gift card file itself does not affect the attack. 
+	
+	Much like previously discussed patches, our route to defend against command injection is to sanitize the user provided input that can contain commands, specifically, disallow all characters that cause multiple commands to be run. To implement this we replaced line 57 of the parse_card_data() function within extras.py - "ret_val = system(f"./{CARD_PARSER} 2 {card_path_name} > tmp_file")" with the following four lines of code: 
+	system_call = (f"./{CARD_PARSER} 2 {card_path_name} > tmp_file")
+	system_call = system_call.replace(";", "")
+	system_call = system_call.replace("&&", "")
+	system_call = system_call.replace("||", "")
+	ret_val = system(system_call)
+By eliminating all occurrences of any of the following strings ";", "&&", and "||" we render it impossible to run multiple commands within this system call. A system command will only succeed when it abides by the existing, hard-coded format for the command. After this patch we attempted our same attack to generate an additional file on the site's file system, but it was unsuccessful. Thus, our changes patch the vulnerability described above.
