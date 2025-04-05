@@ -1,0 +1,39 @@
+=======================
+Encryption Explanation
+=======================
+
+
+----------------------------------------
+How database encryption was implemented
+----------------------------------------
+	To implement encryption on our database, specifically the "data" field (column) in the "LegacySite_card" table, we deployed the "django-cryptography" library (https://django-cryptography.readthedocs.io/en/latest/index.html). This library is based on Python's existing cryptography library with a set of primitives for easy implementation into django. Once installed with pip install django-cryptography, implementation is quite easy and only required edits to two of our existing files: settings.py and models.py. Within settings.py, we introduced two "instuctions" for a total of five new lines of code. Firstly, as stated in the library's documentation, we needed to change django's default signing backend with the following code in settings.py:
+	SIGNING_BACKEND = 'django_cryptography.core.signing.TimestampSigner.' 
+This replaces the default backend signer with the cryptography based "django_cryptography.core.signing.TimestampSigner." 
+	Next, we must "create" our crypto key. Because our key is stored in the file system (more on that later), we needed to read in our key from our "enc_key.txt" file. To do so we use the following lines of code within the settings.py file: 
+	with open('enc_key.txt', 'r') as key_file:
+        key_from_file = key_file.read().replace('\n', '')
+        key_file.close()
+	CRYPTOGRAPHIC_KEY = key_from_file
+Here we read the key in from the file and assign it to our "CRYPTOGRAPHY_KEY" variable used by django-cryptography. These were all the changes we made to our settings.py file to enable database encryption with django.
+	From there, we needed to instruct our service to encrypt the desired field within the database - the data field within the LegacySite_card table. To do so we made the following change to the Card class within models.py:
+	class Card(models.Model):
+		id = models.AutoField(primary_key=True)
+		data = encrypt(models.BinaryField(unique=True))
+		# data = models.BinaryField(unique=True)
+		product = models.ForeignKey('LegacySite.Product', on_delete=models.CASCADE, default=None)
+		amount = models.IntegerField()
+		fp = models.CharField(max_length=100, unique=True)
+		user = models.ForeignKey('LegacySite.User', on_delete=models.CASCADE)
+		used = models.BooleanField(default=False)
+We comment out the original line defining the data field for comparison, but to implement encryption on the field we need only to wrap our data field declaration in a call to the encryption function of django-cryptography. Note, the following import must be included in models.py:
+	from django_cryptography.fields import encrypt
+This concludes our edits to implement django-cryptopgraphy to encrypt the data field of the LegacySite_card table within our database. We confirmed that our implementation was successful by inspecting the card table of db.sqlite3 in both the sqlite3 terminal and the DBeaver database management application.
+
+
+--------------------------------------------------------------
+How key management was handled and why it was chosen this way
+--------------------------------------------------------------
+	As mentioned previously, our chosen method for key management was storage on the server's file system. A file "enc_key.txt" was created and stored within the AppSecLab2/ folder. The file itself only contains a randomly generated key for 256-bit encrytpion. Now, to preface this explanation, we acklowledge that this method is neither secure nor preferred, but we chose this method for two reasons:
+	1. As outlined by stackexchange user "tylerl" (https://security.stackexchange.com/questions/12332/where-to-store-a-server-side-encryption-key) and 	Profesor Olmsted in module 7, storing keys within the file system is favorable to storing them within the database itself. 
+	2. Most of what are considered the best option for key management, e.g. storing on a hardware security module or typing the key in at login and storing 	in memory, seem outside the scope of this assignment and difficult to implement when our github-actions tests are run on freshly booted linux instance.
+Despite selecting an imperfect method, we attempted to increase our security posture by encrypting the key file at rest using a password-driven encryption application previously written for the NYU Applied Cryptography course. The idea is that upon stopping the gift card site service, a password would be provided to encrypt the key file while it sits unused in the file system. Then, upon starting the gift card site server, that same password would be provided to decrypt the file and start the service. However, we ultimately encountered difficulties implementing this feature because it relies on user/human intervention to supply the password. This user intervention obstacle becomes tricky due to the nature of our test suite as mentioned above. With more time we expect to find an improved solution, but for now we stick with the file system implementation.
