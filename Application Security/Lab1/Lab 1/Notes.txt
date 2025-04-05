@@ -1,0 +1,128 @@
+t\x00\x00\x00GiftCardz.com                   DuaneGreenes Store 1451         \x01\x00\x00\x00,\x00\x00\x00\x01\x00\x00\x00\xd0\x07\x00\x00[ insert crypto signature here ]
+
+Merchant ID: GiftCardz.com      Customer ID: DuaneGreenes Store 1171      Num records: 1 record_type: amount_change amount_added: 2000 
+                                                                                                                               
+                                                                                                                               signature: [ insert crypto signature here ] Total value: 2000
+
+-------------------------------
+Part 2: Auditing and Test Cases
+-------------------------------
+- Match the hex of the gift card input file to any hex in the gdb stuff (ie when is it found in a register?)
+- I need to make the number of gift card records -1 to hang in the for loop (hang.gft)
+
+- 3 hex difference in ptr between line 241 and 249 -- trying to discover the value of each of the variables in line 241: ptr=ptr+strlen((char *)gcrd_ptr->actual_record)+1;
+
+237: ptr = 0x55555555a4fc
+241: ptr = 0x55555555a4fc
+245: ptr = 0x55555555a4ff
+(gdb) p 0x55555555a4fc
+$12 = 93824992257276
+
+
+
+------------------
+edit4.gft
+------------------
+Breakpoint 2, gift_card_reader (input_fd=0x5555555592a0) at giftcardreader.c:190
+190                     fread(ptr, ret_val->num_bytes, 1, input_fd);
+(gdb) step
+__GI__IO_fread (buf=0x0, size=18446744073709551615, count=1, fp=0x5555555592a0) at ./libio/iofread.c:32
+32      ./libio/iofread.c: No such file or directory.
+
+------------------
+examplefile.gft
+------------------
+Breakpoint 2, gift_card_reader (input_fd=0x5555555592a0) at giftcardreader.c:190
+190                     fread(ptr, ret_val->num_bytes, 1, input_fd);
+(gdb) step
+__GI__IO_fread (buf=0x55555555a4b0, size=116, count=1, fp=0x5555555592a0) at ./libio/iofread.c:32
+32      ./libio/iofread.c: No such file or directory.
+
+
+
+gdbtui' or `gdb -tui
+gdbtui -q --arg giftcardreader 1 hang.gft
+
+
+examplegcp.program = malloc(256);
+for (int i = 0; i < 256; i++) {
+	examplegcp.program[i] = (char*)0x00;
+}
+examplegcp.program[255] = (char*)0x09;
+examplegcd.gift_card_record_data[0] = (void *) &examplegcp;
+
+
+examplegcp.program = (char*)0x00fa09000000;
+
+
+int i = 0;
+    int x = 3;
+    for(int y = 0; y < 256; y++) {
+        if (x == 3) {
+            break;
+        }
+        else {
+            continue;
+        }
+        printf("%d\n", i);
+        i++;
+    }
+
+
+
+cov1.gft
+First "test case" added to increase coverage for first step (lcov) of Part 3: Fuzzing and Coverage: ./gcrcrash 1 cov1.gft - now covers the case of an amount change within the void print_gift_card_info(struct this_gift_card *thisone) function - lines 85-89 and the amount change case in the struct this_gift_card *gift_card_reader(FILE *input_fd) function - lines 237-238, 244-245(line coverage went from 54.6% [95/174] to 60.9% [106/174]), (functions coverage remains 83.3% [5/6])
+
+Second "test case" added to increase coverage for first step (lcov) of Part 3: Fuzzing and Coverage: ./gcrcrash 2 cov2.gft - now covers much of the void gift_card_json(struct this_gift_card *thisone) function by enabling the json option, still within the amount change case (lines ~108-126) (line coverage went from 60.9% [106/174] to 73.6% [128/174]), (functions coverage went from 83.3% [5/6] to 100% [6/6])
+
+
+
+Crash
+AFLOutputs/crashes/id:000013,sig:11,src:000065,op:havoc,rep:32
+AFLOutputs/crashes/id:000016,sig:11,src:000044+000002,op:splice,rep:2 - FIXED - 1
+AFLOutputs/crashes/id:000018,sig:11,src:000081,op:havoc,rep:128
+AFLOutputs/crashes/id:000019,sig:11,src:000077,op:havoc,rep:64
+AFLOutputs/crashes/id:000020,sig:11,src:000090,op:havoc,rep:128
+AFLOutputs/crashes/id:000021,sig:11,src:000090,op:havoc,rep:64
+AFLOutputs/crashes/id:000023,sig:11,src:000092,op:havoc,rep:128 - bus error
+AFLOutputs/crashes/id:000024,sig:11,src:000002+000075,op:splice,rep:8
+AFLOutputs/crashes/id:000025,sig:11,src:000099,op:havoc,rep:128
+AFLOutputs/crashes/id:000026,sig:11,src:000102+000108,op:splice,rep:64 - FIXED - 1
+AFLOutputs/crashes/id:000027,sig:11,src:000112,op:havoc,rep:32 - FIXED - 1
+AFLOutputs/crashes/id:000028,sig:11,src:000112,op:havoc,rep:32 - MAYBE DO FOR 2
+AFLOutputs/crashes/id:000031,sig:11,src:000121,op:havoc,rep:128
+AFLOutputs/crashes/id:000032,sig:11,src:000122,op:flip1,pos:2312 - MAYBE FOR 2
+AFLOutputs/crashes/id:000033,sig:11,src:000122,op:flip2,pos:3832 - FIXED - 1
+AFLOutputs/crashes/id:000034,sig:11,src:000122,op:flip2,pos:3896
+AFLOutputs/crashes/id:000035,sig:11,src:000122,op:flip4,pos:3896
+AFLOutputs/crashes/id:000036,sig:07,src:000122,op:flip8,pos:3896
+AFLOutputs/crashes/id:000037,sig:11,src:000122,op:havoc,rep:64
+AFLOutputs/crashes/id:000038,sig:11,src:000122,op:havoc,rep:4
+AFLOutputs/crashes/id:000039,sig:11,src:000127,op:flip1,pos:4030 - FIXED - 1
+AFLOutputs/crashes/id:000040,sig:11,src:000121,op:havoc,rep:128 -- zsh: illegal hardware instruction
+AFLOutputs/crashes/id:000041,sig:11,src:000135,op:havoc,rep:32
+AFLOutputs/crashes/id:000041,sig:11,src:000135,op:havoc,rep:32
+AFLOutputs/hangs/id:000000,src:000101,op:havoc,rep:16
+AFLOutputs/hangs/id:000001,src:000102+000108,op:splice,rep:32
+AFLOutputs/hangs/id:000003,src:000112,op:havoc,rep:128
+AFLOutputs/hangs/id:000004,src:000112,op:havoc,rep:128
+AFLOutputs/hangs/id:000007,src:000112,op:havoc,rep:32 - FIXED - 1
+AFLOutputs/hangs/id:000008,src:000121,op:flip2,pos:3563 - FIXED - 1
+AFLOutputs/hangs/id:000015,src:000121,op:havoc,rep:64
+AFLOutputs/hangs/id:000016,src:000121,op:havoc,rep:64 - FIXED - 1
+AFLOutputs/hangs/id:000017,src:000122,op:flip1,pos:3896 - FIXED - 1
+AFLOutputs/hangs/id:000018,src:000122,op:arith8,pos:4024,val:+23 - FIXED - 1
+AFLOutputs/hangs/id:000019,src:000127,op:havoc,rep:128 - FIXED - 1
+AFLOutputs/hangs/id:000020,src:000122+000128,op:splice,rep:16 - FIXED - 1
+AFLOutputs/hangs/id:000023,src:000002+000118,op:splice,rep:4 - FIXED - 1
+AFLOutputs/hangs/id:000025,src:000137,op:havoc,rep:32
+
+Hang
+AFLOutputs/crashes/id:000012,sig:11,src:000046,op:havoc,rep:8 - FIXED - fix1
+AFLOutputs/crashes/id:000022,sig:11,src:000090,op:havoc,rep:16 - FIXED - 1
+
+
+program=0x55555555a680 "HHHHHHI", 'H' <repeats 12 times>, "\001\377\377\177\001") at giftcardreadercrash.c:18
+0x00fa09000000
+
+AFLOutputsNoHang/crashes/id:000063,sig:11,src:000123,op:havoc,rep:16
